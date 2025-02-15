@@ -3,7 +3,7 @@ package com.pz.showMySkin.mixin;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.pz.showMySkin.Config;
-import com.pz.showMySkin.CustomArmorRenderType;
+import com.pz.showMySkin.client.renderer.CustomArmorRenderType;
 import com.pz.showMySkin.uilt.ArmorRenderTracker;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.Model;
@@ -14,7 +14,6 @@ import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -125,7 +124,6 @@ public abstract class ArmorLayerMixin<T extends LivingEntity, M extends Humanoid
             cancellable = true)
     private void onRenderModel(PoseStack p_289664_, MultiBufferSource p_289689_, int p_289681_, Model p_289658_, int p_350798_, ResourceLocation p_324344_, CallbackInfo ci) {
         EquipmentSlot currentSlot = ArmorRenderTracker.getCurrentSlot();
-        System.out.println(currentSlot);
         if (currentSlot == null) return;
         float opacity = showMySkin$getArmorOpacity(currentSlot);
         if (opacity <= 0.0f) {

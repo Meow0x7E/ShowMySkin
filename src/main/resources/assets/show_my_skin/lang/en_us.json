@@ -1,5 +1,7 @@
 {
-  "itemGroup.show_my_skin": "Example Mod Tab",
-  "block.show_my_skin.example_block": "Example Block",
-  "item.show_my_skin.example_item": "Example Item"
+  "show_my_skin.settings.title": "Armor Settings",
+  "show_my_skin.settings.helmet_opacity": "Helmet Opacity",
+  "show_my_skin.settings.chestplate_opacity": "Chestplate Opacity",
+  "show_my_skin.settings.leggings_opacity": "Leggings Opacity",
+  "show_my_skin.settings.boots_opacity": "Boots Opacity"
 }
