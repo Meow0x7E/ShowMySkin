@@ -16,7 +16,6 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.ItemStack;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -25,7 +24,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.awt.*;
-import java.util.Map;
 
 @Mixin(HumanoidArmorLayer.class)
 public abstract class ArmorLayerMixin<T extends LivingEntity, M extends HumanoidModel<T>, A extends HumanoidModel<T>> {
@@ -33,7 +31,16 @@ public abstract class ArmorLayerMixin<T extends LivingEntity, M extends Humanoid
     @Shadow
     protected abstract void renderModel(PoseStack p_289664_, MultiBufferSource p_289689_, int p_289681_,
                                         Model p_289658_, int p_350798_, ResourceLocation p_324344_);
-
+    @Unique
+    private float showMySkin$getArmorOpacity(EquipmentSlot slot) {
+        return switch (slot) {
+            case HEAD -> Config.helmetOpacity.get() / 100.0f;
+            case CHEST -> Config.chestplateOpacity.get() / 100.0f;
+            case LEGS -> Config.leggingsOpacity.get() / 100.0f;
+            case FEET -> Config.bootsOpacity.get() / 100.0f;
+            default -> 1.0f;
+        };
+    }
 
 
     @Inject(method = "renderArmorPiece(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/entity/EquipmentSlot;ILnet/minecraft/client/model/HumanoidModel;FFFFFF)V",
@@ -53,7 +60,8 @@ public abstract class ArmorLayerMixin<T extends LivingEntity, M extends Humanoid
         };
 
         // 如果设置为不可见，取消渲染
-        if (!isVisible) {
+
+        if (!isVisible || showMySkin$getArmorOpacity(slot) <= 0.0f) {
             ci.cancel();
         }
     }
@@ -110,4 +118,33 @@ public abstract class ArmorLayerMixin<T extends LivingEntity, M extends Humanoid
         }
         ci.cancel();
     }
+
+    // 拦截原始的renderModel方法，使用我们的自定义渲染类型
+    @Inject(method = "renderModel(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;ILnet/minecraft/client/model/Model;ILnet/minecraft/resources/ResourceLocation;)V",
+            at = @At("HEAD"),
+            cancellable = true)
+    private void onRenderModel(PoseStack p_289664_, MultiBufferSource p_289689_, int p_289681_, Model p_289658_, int p_350798_, ResourceLocation p_324344_, CallbackInfo ci) {
+        EquipmentSlot currentSlot = ArmorRenderTracker.getCurrentSlot();
+        System.out.println(currentSlot);
+        if (currentSlot == null) return;
+        float opacity = showMySkin$getArmorOpacity(currentSlot);
+        if (opacity <= 0.0f) {
+            ci.cancel();
+            return;
+        }
+
+        float r = (float)(p_350798_ >> 16 & 255) / 255.0F;
+        float g = (float)(p_350798_ >> 8 & 255) / 255.0F;
+        float b = (float)(p_350798_ & 255) / 255.0F;
+
+        int color = new Color(r, g, b, opacity).getRGB();
+
+        // 使用自定义的RenderType来支持透明度
+        RenderType renderType = CustomArmorRenderType.armorTranslucent(p_324344_);
+        VertexConsumer vertexConsumer = p_289689_.getBuffer(renderType);
+
+        p_289658_.renderToBuffer(p_289664_, vertexConsumer, p_289681_, OverlayTexture.NO_OVERLAY, color);
+        ci.cancel();
+    }
+
 }
