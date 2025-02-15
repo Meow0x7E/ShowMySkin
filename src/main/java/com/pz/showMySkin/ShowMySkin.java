@@ -39,6 +39,7 @@ public class ShowMySkin {
 
 
     public ShowMySkin(IEventBus modEventBus, ModContainer modContainer) {
+        modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
     }
 
 }
