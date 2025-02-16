@@ -1,7 +1,7 @@
 package com.pz.showMySkin.client.gui;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.math.Axis;
+import com.mojang.logging.LogUtils;
 import com.pz.showMySkin.Config;
 import com.pz.showMySkin.ShowMySkin;
 import com.pz.showMySkin.client.gui.parts.*;
@@ -10,20 +10,19 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
-import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.LivingEntity;
 import net.neoforged.neoforge.common.ModConfigSpec;
-import org.joml.Quaternionf;
-
+import org.slf4j.Logger;
 import java.awt.*;
+
 
 public class ArmorSettingsScreen extends Screen {
     private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(ShowMySkin.MODID, "textures/gui/settings.png");
     private static final int TEXTURE_WIDTH = 256;
     private static final int TEXTURE_HEIGHT = 256;
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     private final Screen lastScreen;
     private static final int BUTTON_SIZE = 20;
@@ -36,12 +35,8 @@ public class ArmorSettingsScreen extends Screen {
     private static final int PLAYER_RENDER_SIZE = 120;
     private float modelRotation = 0f;
     private static final float ROTATION_SPEED = 1f;
-    private boolean isDragging = false;
 
-    private float xMouse;        // 记录鼠标X坐标
-    private float yMouse;        // 记录鼠标Y坐标
-    private float yRot;         // 玩家模型的Y轴旋转角度
-    private float xRot;         // 玩家模型的X轴旋转角度
+
 
     private final boolean[] expandedStates = new boolean[4]; // HEAD, CHEST, LEGS, FEET
 
@@ -50,20 +45,32 @@ public class ArmorSettingsScreen extends Screen {
     public ArmorSettingsScreen(Screen lastScreen) {
         super(Component.translatable("show_my_skin.settings.title"));
         this.lastScreen = lastScreen;
-        // 设置初始角度，让玩家模型稍微偏向一边
-        this.yRot = 145.0F;
-        this.xRot = -10.0F;
+
     }
 
-    protected ArmorSettingsScreen(Component title, Screen lastScreen) {
-        super(title);
-        this.lastScreen = lastScreen;
-    }
+    @Override
+    public void renderBackground(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        super.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
+        // 设置渲染状态
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
 
+        // 计算纹理绘制位置，使其居中显示
+        int x = (this.width - TEXTURE_WIDTH) / 2;
+        int y = (this.height - TEXTURE_HEIGHT) / 2;
+
+        // 渲染自定义背景纹理
+        guiGraphics.blit(TEXTURE, x, y, 0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+
+        // 恢复渲染状态
+        RenderSystem.disableBlend();
+    }
 
     @Override
     protected void init() {
         super.init();
+        clearWidgets();
 
         // 计算左侧控制区域的起始位置
         int leftPanelWidth = BUTTON_SIZE + SLIDER_WIDTH + BUTTON_SIZE + EXPAND_SIZE + SPACING * 3;
@@ -79,12 +86,16 @@ public class ArmorSettingsScreen extends Screen {
         // 添加完成按钮
         this.addRenderableWidget(Button.builder(
                         Component.translatable("gui.done"),
-                        button -> this.minecraft.setScreen(this.lastScreen))
+                        button -> {
+                            Config.SPEC.save();
+                            this.minecraft.setScreen(this.lastScreen);
+                        })
                 .pos(leftX + leftPanelWidth / 2 - 50, startY + ROW_HEIGHT * 8)
                 .size(100, 20)
                 .build());
 
     }
+
     private void addArmorControlRow(EquipmentSlot slot, int x, int y, int index) {
         // 主控制行
         // 可见性按钮（带盔甲图标）
@@ -122,7 +133,10 @@ public class ArmorSettingsScreen extends Screen {
                 EXPAND_SIZE,
                 BUTTON_SIZE,
                 () -> expandedStates[index],
-                expanded -> expandedStates[index] = expanded
+                expanded ->{
+                    expandedStates[index] = expanded;
+                    this.init(this.minecraft, this.width, this.height);
+                }
         ));
 
         // 如果处于展开状态，添加部位控制按钮

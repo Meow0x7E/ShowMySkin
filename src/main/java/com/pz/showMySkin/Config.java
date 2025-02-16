@@ -127,6 +127,6 @@ public class Config {
         BUILDER.pop();
     }
 
-    static final ModConfigSpec SPEC = BUILDER.build();
+    public static final ModConfigSpec SPEC = BUILDER.build();
 
 }
