@@ -36,7 +36,9 @@ public class ArmorSettingsScreen extends Screen {
     private float modelRotation = 0f;
     private static final float ROTATION_SPEED = 1f;
 
-
+    private static final int MIN_SPACE_BETWEEN_ROWS = 10; // 最小行间距
+    private static final int MIN_TOP_MARGIN = 20; // 最小顶部边距
+    private static final int MIN_BOTTOM_MARGIN = 30; // 最小底部边距
 
     private final boolean[] expandedStates = new boolean[4]; // HEAD, CHEST, LEGS, FEET
 
@@ -72,76 +74,88 @@ public class ArmorSettingsScreen extends Screen {
         super.init();
         clearWidgets();
 
-        // 计算左侧控制区域的起始位置
-        int leftPanelWidth = BUTTON_SIZE + SLIDER_WIDTH + BUTTON_SIZE + EXPAND_SIZE + SPACING * 3;
-        int leftX = this.width / 2 - PLAYER_RENDER_SIZE;
-        int startY = this.height / 2 - 80;
+        // 计算可用空间
+        int availableHeight = this.height - MIN_TOP_MARGIN - MIN_BOTTOM_MARGIN;
 
-        // 添加每个盔甲部件的控制行
+        // 计算自适应的行间距
+        // 总共需要4个装备行和1个完成按钮
+        int totalRows = 4;
+        int rowSpacing = Math.max(MIN_SPACE_BETWEEN_ROWS,
+                (availableHeight - (totalRows * ROW_HEIGHT)) / (totalRows + 1));
+
+        // 计算左侧起始位置，保持水平居中
+        int leftX = this.width / 2 - (BUTTON_SIZE + SLIDER_WIDTH + BUTTON_SIZE + SPACING * 2) / 2;
+
+        // 计算第一行的Y坐标
+        int startY = MIN_TOP_MARGIN + rowSpacing;
+
+        // 添加装备控制行
         addArmorControlRow(EquipmentSlot.HEAD, leftX, startY, 0);
-        addArmorControlRow(EquipmentSlot.CHEST, leftX, startY + ROW_HEIGHT * 2, 1);
-        addArmorControlRow(EquipmentSlot.LEGS, leftX, startY + ROW_HEIGHT * 4, 2);
-        addArmorControlRow(EquipmentSlot.FEET, leftX, startY + ROW_HEIGHT * 6, 3);
+        addArmorControlRow(EquipmentSlot.CHEST, leftX, startY + (ROW_HEIGHT + rowSpacing), 1);
+        addArmorControlRow(EquipmentSlot.LEGS, leftX, startY + (ROW_HEIGHT + rowSpacing) * 2, 2);
+        addArmorControlRow(EquipmentSlot.FEET, leftX, startY + (ROW_HEIGHT + rowSpacing) * 3, 3);
 
-        // 添加完成按钮
+        // 完成按钮
         this.addRenderableWidget(Button.builder(
                         Component.translatable("gui.done"),
                         button -> {
-                            Config.SPEC.save();
+                            try {
+                                Config.SPEC.save();
+                                LOGGER.info("Successfully saved ShowMySkin config");
+                            } catch (Exception e) {
+                                LOGGER.error("Failed to save ShowMySkin config: ", e);
+                            }
                             this.minecraft.setScreen(this.lastScreen);
                         })
-                .pos(leftX + leftPanelWidth / 2 - 50, startY + ROW_HEIGHT * 8)
+                .pos(this.width / 2 - 50, this.height - MIN_BOTTOM_MARGIN)
                 .size(100, 20)
                 .build());
 
     }
 
     private void addArmorControlRow(EquipmentSlot slot, int x, int y, int index) {
-        // 主控制行
-        // 可见性按钮（带盔甲图标）
+        // 计算每个控件的最小间距
+        int minSpacing = 2;
+
+        // 计算控件位置
+        int buttonX = x;
+        int sliderX = buttonX + BUTTON_SIZE + minSpacing;
+        int enchantX = sliderX + SLIDER_WIDTH + minSpacing;
+        int expandX = enchantX + BUTTON_SIZE + minSpacing;
+
+        // 添加控件
         addRenderableWidget(new ArmorVisibilityButton(
-                x, y, BUTTON_SIZE, BUTTON_SIZE,
+                buttonX, y, BUTTON_SIZE, BUTTON_SIZE,
                 slot,
                 button -> toggleArmorVisibility(slot)
         ));
 
-        // 透明度滑块
         addRenderableWidget(new OpacitySlider(
-                x + BUTTON_SIZE + SPACING,
-                y,
-                SLIDER_WIDTH,
-                BUTTON_SIZE,
+                sliderX, y, SLIDER_WIDTH, BUTTON_SIZE,
                 getOpacityValue(slot),
                 getTranslationKey(slot),
                 value -> setOpacityValue(slot, value)
         ));
 
-        // 附魔效果按钮
         addRenderableWidget(new EnchantmentButton(
-                x + BUTTON_SIZE + SLIDER_WIDTH + SPACING * 2,
-                y,
-                BUTTON_SIZE,
-                BUTTON_SIZE,
+                enchantX, y, BUTTON_SIZE, BUTTON_SIZE,
                 slot,
                 button -> toggleEnchantmentGlow(slot)
         ));
 
-        // 展开/折叠按钮
         addRenderableWidget(new ExpandButton(
-                x + BUTTON_SIZE + SLIDER_WIDTH + BUTTON_SIZE + SPACING * 3,
-                y,
-                EXPAND_SIZE,
-                BUTTON_SIZE,
+                expandX, y, EXPAND_SIZE, BUTTON_SIZE,
                 () -> expandedStates[index],
-                expanded ->{
+                expanded -> {
                     expandedStates[index] = expanded;
-                    this.init(this.minecraft, this.width, this.height);
+                    init();
                 }
         ));
 
-        // 如果处于展开状态，添加部位控制按钮
+        // 如果展开状态，添加部件按钮
         if (expandedStates[index]) {
-            addPartButtons(slot, x + SPACING, y + BUTTON_SIZE + SPACING);
+            int partY = y + BUTTON_SIZE + minSpacing;
+            addPartButtons(slot, x + minSpacing, partY);
         }
     }
 
