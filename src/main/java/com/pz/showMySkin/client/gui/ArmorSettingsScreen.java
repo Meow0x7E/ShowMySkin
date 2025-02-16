@@ -23,25 +23,28 @@ public class ArmorSettingsScreen extends Screen {
     private static final int TEXTURE_WIDTH = 256;
     private static final int TEXTURE_HEIGHT = 256;
     private static final Logger LOGGER = LogUtils.getLogger();
+    // GUI实际区域尺寸（从1,1开始，所以实际占用238x177）
+    private static final int GUI_WIDTH = 236;
+    private static final int GUI_HEIGHT = 175;
 
-    private final Screen lastScreen;
+    // 边框宽度
+    private static final int BORDER_WIDTH = 7;
+
+    // 玩家模型渲染区域尺寸
+    private static final int PLAYER_RENDER_WIDTH = 110;
+    private static final int PLAYER_RENDER_HEIGHT = 140;
+
+    // 控件相关常量
     private static final int BUTTON_SIZE = 20;
     private static final int PART_BUTTON_SIZE = 20;
     private static final int SLIDER_WIDTH = 100;
     private static final int ROW_HEIGHT = 25;
     private static final int SPACING = 5;
-    private static final int EXPAND_SIZE = 20;
 
-    private static final int PLAYER_RENDER_SIZE = 120;
+    private final Screen lastScreen;
+    private final boolean[] expandedStates = new boolean[4]; // HEAD, CHEST, LEGS, FEET
     private float modelRotation = 0f;
     private static final float ROTATION_SPEED = 1f;
-
-    private static final int MIN_SPACE_BETWEEN_ROWS = 10; // 最小行间距
-    private static final int MIN_TOP_MARGIN = 20; // 最小顶部边距
-    private static final int MIN_BOTTOM_MARGIN = 30; // 最小底部边距
-
-    private final boolean[] expandedStates = new boolean[4]; // HEAD, CHEST, LEGS, FEET
-
 
 
     public ArmorSettingsScreen(Screen lastScreen) {
@@ -51,51 +54,29 @@ public class ArmorSettingsScreen extends Screen {
     }
 
     @Override
-    public void renderBackground(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        super.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
-        // 设置渲染状态
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-
-        // 计算纹理绘制位置，使其居中显示
-        int x = (this.width - TEXTURE_WIDTH) / 2;
-        int y = (this.height - TEXTURE_HEIGHT) / 2;
-
-        // 渲染自定义背景纹理
-        guiGraphics.blit(TEXTURE, x, y, 0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
-
-        // 恢复渲染状态
-        RenderSystem.disableBlend();
-    }
-
-    @Override
     protected void init() {
-        super.init();
         clearWidgets();
+        // 计算GUI的起始位置，使其居中
+        int guiLeft = (this.width - GUI_WIDTH) / 2;
+        int guiTop = (this.height - GUI_HEIGHT) / 2;
+        // 计算控件区域（左侧区域）
+        int controlsWidth = GUI_WIDTH - PLAYER_RENDER_WIDTH - BORDER_WIDTH * 2;
+        int controlsLeft = guiLeft + BORDER_WIDTH;
+        int controlsTop = guiTop + BORDER_WIDTH;
 
-        // 计算可用空间
-        int availableHeight = this.height - MIN_TOP_MARGIN - MIN_BOTTOM_MARGIN;
-
-        // 计算自适应的行间距
-        // 总共需要4个装备行和1个完成按钮
-        int totalRows = 4;
-        int rowSpacing = Math.max(MIN_SPACE_BETWEEN_ROWS,
-                (availableHeight - (totalRows * ROW_HEIGHT)) / (totalRows + 1));
-
-        // 计算左侧起始位置，保持水平居中
-        int leftX = this.width / 2 - (BUTTON_SIZE + SLIDER_WIDTH + BUTTON_SIZE + SPACING * 2) / 2;
-
-        // 计算第一行的Y坐标
-        int startY = MIN_TOP_MARGIN + rowSpacing;
+        // 计算可用空间和行间距
+        int availableHeight = GUI_HEIGHT - BORDER_WIDTH * 2;
+        int totalRows = 4; // 装备槽位数量
+        int rowSpacing = Math.max(SPACING, (availableHeight - (totalRows * ROW_HEIGHT)) / (totalRows + 1));
 
         // 添加装备控制行
-        addArmorControlRow(EquipmentSlot.HEAD, leftX, startY, 0);
-        addArmorControlRow(EquipmentSlot.CHEST, leftX, startY + (ROW_HEIGHT + rowSpacing), 1);
-        addArmorControlRow(EquipmentSlot.LEGS, leftX, startY + (ROW_HEIGHT + rowSpacing) * 2, 2);
-        addArmorControlRow(EquipmentSlot.FEET, leftX, startY + (ROW_HEIGHT + rowSpacing) * 3, 3);
+        int currentY = controlsTop + rowSpacing;
+        this.addArmorControlRow(EquipmentSlot.HEAD, controlsLeft, currentY, controlsWidth, 0);
+        this.addArmorControlRow(EquipmentSlot.CHEST, controlsLeft, currentY + (ROW_HEIGHT + rowSpacing), controlsWidth, 1);
+        this.addArmorControlRow(EquipmentSlot.LEGS, controlsLeft, currentY + (ROW_HEIGHT + rowSpacing) * 2, controlsWidth, 2);
+        this.addArmorControlRow(EquipmentSlot.FEET, controlsLeft, currentY + (ROW_HEIGHT + rowSpacing) * 3, controlsWidth, 3);
 
-        // 完成按钮
+        // 添加完成按钮
         this.addRenderableWidget(Button.builder(
                         Component.translatable("gui.done"),
                         button -> {
@@ -107,23 +88,24 @@ public class ArmorSettingsScreen extends Screen {
                             }
                             this.minecraft.setScreen(this.lastScreen);
                         })
-                .pos(this.width / 2 - 50, this.height - MIN_BOTTOM_MARGIN)
+                .pos(guiLeft + (GUI_WIDTH - 100) / 2, guiTop + GUI_HEIGHT - BORDER_WIDTH - 25)
                 .size(100, 20)
                 .build());
 
-    }
+        super.init();
 
-    private void addArmorControlRow(EquipmentSlot slot, int x, int y, int index) {
-        // 计算每个控件的最小间距
+    }
+    private void addArmorControlRow(EquipmentSlot slot, int x, int y, int width, int index) {
         int minSpacing = 2;
 
         // 计算控件位置
+        int availableWidth = width - BUTTON_SIZE * 2 - SLIDER_WIDTH - minSpacing * 3;
         int buttonX = x;
         int sliderX = buttonX + BUTTON_SIZE + minSpacing;
         int enchantX = sliderX + SLIDER_WIDTH + minSpacing;
         int expandX = enchantX + BUTTON_SIZE + minSpacing;
 
-        // 添加控件
+        // 添加主要控件
         addRenderableWidget(new ArmorVisibilityButton(
                 buttonX, y, BUTTON_SIZE, BUTTON_SIZE,
                 slot,
@@ -144,7 +126,7 @@ public class ArmorSettingsScreen extends Screen {
         ));
 
         addRenderableWidget(new ExpandButton(
-                expandX, y, EXPAND_SIZE, BUTTON_SIZE,
+                expandX, y, BUTTON_SIZE, BUTTON_SIZE,
                 () -> expandedStates[index],
                 expanded -> {
                     expandedStates[index] = expanded;
@@ -155,41 +137,8 @@ public class ArmorSettingsScreen extends Screen {
         // 如果展开状态，添加部件按钮
         if (expandedStates[index]) {
             int partY = y + BUTTON_SIZE + minSpacing;
-            addPartButtons(slot, x + minSpacing, partY);
+            addPartButtons(slot, x, partY);
         }
-    }
-
-    @Override
-    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-
-        // 更新模型旋转角度
-        modelRotation += ROTATION_SPEED;
-
-        // 渲染标题
-        guiGraphics.drawCenteredString(Minecraft.getInstance().font, this.title,
-                this.width / 2, 20, new Color(0xFFFFFF).getRGB());
-
-        // 渲染分隔线
-        int centerX = this.width / 2;
-        guiGraphics.fill(centerX - 1, 40, centerX + 1, this.height - 20, new Color(0x80FFFFFF).getRGB());
-
-
-        int centerY = this.height / 2 - 30;
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
-
-        InventoryScreen.renderEntityInInventoryFollowsMouse(
-                guiGraphics,
-                centerX,              // x1 (左边界)
-                centerY - 60,        // y1 (上边界)
-                centerX + PLAYER_RENDER_SIZE,  // x2 (右边界)
-                centerY + 60,        // y2 (下边界)
-                45,                  // scale (缩放)
-                0.0F,               // yOffset (Y轴偏移)
-                mouseX,             // mouseX (鼠标X坐标)
-                mouseY,             // mouseY (鼠标Y坐标)
-                this.minecraft.player // entity (要渲染的实体)
-        );
-
     }
 
     private void addPartButtons(EquipmentSlot slot, int x, int y) {
@@ -215,6 +164,50 @@ public class ArmorSettingsScreen extends Screen {
         }
     }
 
+    @Override
+    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        super.render(guiGraphics, mouseX, mouseY, partialTick);
+        // 计算GUI位置
+        int guiLeft = (this.width - GUI_WIDTH) / 2;
+        int guiTop = (this.height - GUI_HEIGHT) / 2;
+
+        // 渲染GUI背景
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderSystem.enableBlend();
+        guiGraphics.blit(TEXTURE, guiLeft, guiTop, 0, 0, GUI_WIDTH, GUI_HEIGHT);
+        RenderSystem.disableBlend();
+        // 渲染标题
+        guiGraphics.drawCenteredString(
+                this.font,
+                this.title,
+                guiLeft + GUI_WIDTH / 2,
+                guiTop + 16,
+                0xFFFFFF
+        );
+
+        // 计算玩家模型渲染区域
+        int playerLeft = guiLeft + GUI_WIDTH - PLAYER_RENDER_WIDTH;
+        int playerTop = guiTop + BORDER_WIDTH;
+
+        // 渲染玩家模型
+        InventoryScreen.renderEntityInInventoryFollowsMouse(
+                guiGraphics,
+                playerLeft,
+                playerTop,
+                playerLeft + PLAYER_RENDER_WIDTH,
+                playerTop + PLAYER_RENDER_HEIGHT,
+                45,
+                0.0F,
+                mouseX,
+                mouseY,
+                this.minecraft.player
+        );
+        // 更新模型旋转
+        modelRotation += ROTATION_SPEED;
+    }
+
+
+
     private void addPartButton(String part, int x, int y, ModConfigSpec.BooleanValue config) {
         addRenderableWidget(new BodyPartButton(
                 x, y, PART_BUTTON_SIZE, PART_BUTTON_SIZE,
@@ -224,13 +217,14 @@ public class ArmorSettingsScreen extends Screen {
         ));
     }
 
+
     private String getTranslationKey(EquipmentSlot slot) {
         return switch (slot) {
             case HEAD -> "show_my_skin.settings.helmet_opacity";
             case CHEST -> "show_my_skin.settings.chestplate_opacity";
             case LEGS -> "show_my_skin.settings.leggings_opacity";
-            case MAINHAND, OFFHAND, BODY -> null;
             case FEET -> "show_my_skin.settings.boots_opacity";
+            default -> null;
         };
     }
 
