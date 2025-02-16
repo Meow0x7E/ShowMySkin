@@ -73,6 +73,7 @@ public class Config {
         chestplateEnchantGlow = BUILDER.comment("Show chestplate enchantment?").define("chestplateEnchantGlow", true);
         leggingsEnchantGlow = BUILDER.comment("Show leggings enchantment?").define("leggingsEnchantGlow", true);
         bootsEnchantGlow = BUILDER.comment("Show boots enchantment?").define("bootsEnchantGlow", true);
+        BUILDER.pop();
 
         // 盔甲模型部位可见性设置
         BUILDER.push("Armor Model Parts Visibility");

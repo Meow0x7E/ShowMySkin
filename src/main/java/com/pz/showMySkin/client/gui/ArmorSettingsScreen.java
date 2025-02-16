@@ -1,15 +1,24 @@
 package com.pz.showMySkin.client.gui;
 
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.math.Axis;
 import com.pz.showMySkin.Config;
 import com.pz.showMySkin.ShowMySkin;
-import com.pz.showMySkin.client.gui.parts.ArmorVisibilityButton;
-import com.pz.showMySkin.client.gui.parts.EnchantmentButton;
-import com.pz.showMySkin.client.gui.parts.OpacitySlider;
+import com.pz.showMySkin.client.gui.parts.*;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.neoforged.neoforge.common.ModConfigSpec;
+import org.joml.Quaternionf;
+
+import java.awt.*;
 
 public class ArmorSettingsScreen extends Screen {
     private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(ShowMySkin.MODID, "textures/gui/settings.png");
@@ -18,15 +27,33 @@ public class ArmorSettingsScreen extends Screen {
 
     private final Screen lastScreen;
     private static final int BUTTON_SIZE = 20;
+    private static final int PART_BUTTON_SIZE = 20;
     private static final int SLIDER_WIDTH = 100;
     private static final int ROW_HEIGHT = 25;
     private static final int SPACING = 5;
+    private static final int EXPAND_SIZE = 20;
+
+    private static final int PLAYER_RENDER_SIZE = 120;
+    private float modelRotation = 0f;
+    private static final float ROTATION_SPEED = 1f;
+    private boolean isDragging = false;
+
+    private float xMouse;        // 记录鼠标X坐标
+    private float yMouse;        // 记录鼠标Y坐标
+    private float yRot;         // 玩家模型的Y轴旋转角度
+    private float xRot;         // 玩家模型的X轴旋转角度
+
+    private final boolean[] expandedStates = new boolean[4]; // HEAD, CHEST, LEGS, FEET
+
+
 
     public ArmorSettingsScreen(Screen lastScreen) {
         super(Component.translatable("show_my_skin.settings.title"));
         this.lastScreen = lastScreen;
+        // 设置初始角度，让玩家模型稍微偏向一边
+        this.yRot = 145.0F;
+        this.xRot = -10.0F;
     }
-
 
     protected ArmorSettingsScreen(Component title, Screen lastScreen) {
         super(title);
@@ -37,25 +64,29 @@ public class ArmorSettingsScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        int leftX = this.width / 2 - (BUTTON_SIZE + SLIDER_WIDTH + BUTTON_SIZE + SPACING * 2) / 2;
-        int startY = this.height / 4;
+
+        // 计算左侧控制区域的起始位置
+        int leftPanelWidth = BUTTON_SIZE + SLIDER_WIDTH + BUTTON_SIZE + EXPAND_SIZE + SPACING * 3;
+        int leftX = this.width / 2 - PLAYER_RENDER_SIZE;
+        int startY = this.height / 2 - 80;
 
         // 添加每个盔甲部件的控制行
-        addArmorControls(EquipmentSlot.HEAD, leftX, startY);
-        addArmorControls(EquipmentSlot.CHEST, leftX, startY + ROW_HEIGHT);
-        addArmorControls(EquipmentSlot.LEGS, leftX, startY + ROW_HEIGHT * 2);
-        addArmorControls(EquipmentSlot.FEET, leftX, startY + ROW_HEIGHT * 3);
+        addArmorControlRow(EquipmentSlot.HEAD, leftX, startY, 0);
+        addArmorControlRow(EquipmentSlot.CHEST, leftX, startY + ROW_HEIGHT * 2, 1);
+        addArmorControlRow(EquipmentSlot.LEGS, leftX, startY + ROW_HEIGHT * 4, 2);
+        addArmorControlRow(EquipmentSlot.FEET, leftX, startY + ROW_HEIGHT * 6, 3);
 
         // 添加完成按钮
         this.addRenderableWidget(Button.builder(
                         Component.translatable("gui.done"),
                         button -> this.minecraft.setScreen(this.lastScreen))
-                .pos(this.width / 2 - 50, startY + ROW_HEIGHT * 4 + 10)
+                .pos(leftX + leftPanelWidth / 2 - 50, startY + ROW_HEIGHT * 8)
                 .size(100, 20)
                 .build());
-    }
 
-    private void addArmorControls(EquipmentSlot slot, int x, int y) {
+    }
+    private void addArmorControlRow(EquipmentSlot slot, int x, int y, int index) {
+        // 主控制行
         // 可见性按钮（带盔甲图标）
         addRenderableWidget(new ArmorVisibilityButton(
                 x, y, BUTTON_SIZE, BUTTON_SIZE,
@@ -74,7 +105,7 @@ public class ArmorSettingsScreen extends Screen {
                 value -> setOpacityValue(slot, value)
         ));
 
-        // 附魔效果开关
+        // 附魔效果按钮
         addRenderableWidget(new EnchantmentButton(
                 x + BUTTON_SIZE + SLIDER_WIDTH + SPACING * 2,
                 y,
@@ -83,19 +114,95 @@ public class ArmorSettingsScreen extends Screen {
                 slot,
                 button -> toggleEnchantmentGlow(slot)
         ));
+
+        // 展开/折叠按钮
+        addRenderableWidget(new ExpandButton(
+                x + BUTTON_SIZE + SLIDER_WIDTH + BUTTON_SIZE + SPACING * 3,
+                y,
+                EXPAND_SIZE,
+                BUTTON_SIZE,
+                () -> expandedStates[index],
+                expanded -> expandedStates[index] = expanded
+        ));
+
+        // 如果处于展开状态，添加部位控制按钮
+        if (expandedStates[index]) {
+            addPartButtons(slot, x + SPACING, y + BUTTON_SIZE + SPACING);
+        }
     }
 
+    @Override
+    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
 
-    // 辅助方法
+        // 更新模型旋转角度
+        modelRotation += ROTATION_SPEED;
+
+        // 渲染标题
+        guiGraphics.drawCenteredString(Minecraft.getInstance().font, this.title,
+                this.width / 2, 20, new Color(0xFFFFFF).getRGB());
+
+        // 渲染分隔线
+        int centerX = this.width / 2;
+        guiGraphics.fill(centerX - 1, 40, centerX + 1, this.height - 20, new Color(0x80FFFFFF).getRGB());
+
+
+        int centerY = this.height / 2 - 30;
+        super.render(guiGraphics, mouseX, mouseY, partialTick);
+
+        InventoryScreen.renderEntityInInventoryFollowsMouse(
+                guiGraphics,
+                centerX,              // x1 (左边界)
+                centerY - 60,        // y1 (上边界)
+                centerX + PLAYER_RENDER_SIZE,  // x2 (右边界)
+                centerY + 60,        // y2 (下边界)
+                45,                  // scale (缩放)
+                0.0F,               // yOffset (Y轴偏移)
+                mouseX,             // mouseX (鼠标X坐标)
+                mouseY,             // mouseY (鼠标Y坐标)
+                this.minecraft.player // entity (要渲染的实体)
+        );
+
+    }
+
+    private void addPartButtons(EquipmentSlot slot, int x, int y) {
+        switch (slot) {
+            case HEAD -> {
+                addPartButton("head", x, y, Config.helmetHeadVisible);
+                addPartButton("hat", x + PART_BUTTON_SIZE + SPACING, y, Config.helmetHatVisible);
+            }
+            case CHEST -> {
+                addPartButton("body", x, y, Config.chestplateBodyVisible);
+                addPartButton("rightArm", x + PART_BUTTON_SIZE + SPACING, y, Config.chestplateRightArmVisible);
+                addPartButton("leftArm", x + (PART_BUTTON_SIZE + SPACING) * 2, y, Config.chestplateLeftArmVisible);
+            }
+            case LEGS -> {
+                addPartButton("body", x, y, Config.leggingsBodyVisible);
+                addPartButton("rightLeg", x + PART_BUTTON_SIZE + SPACING, y, Config.leggingsRightLegVisible);
+                addPartButton("leftLeg", x + (PART_BUTTON_SIZE + SPACING) * 2, y, Config.leggingsLeftLegVisible);
+            }
+            case FEET -> {
+                addPartButton("rightLeg", x, y, Config.bootsRightLegVisible);
+                addPartButton("leftLeg", x + PART_BUTTON_SIZE + SPACING, y, Config.bootsLeftLegVisible);
+            }
+        }
+    }
+
+    private void addPartButton(String part, int x, int y, ModConfigSpec.BooleanValue config) {
+        addRenderableWidget(new BodyPartButton(
+                x, y, PART_BUTTON_SIZE, PART_BUTTON_SIZE,
+                part,
+                config::get,
+                config::set
+        ));
+    }
+
     private String getTranslationKey(EquipmentSlot slot) {
         return switch (slot) {
             case HEAD -> "show_my_skin.settings.helmet_opacity";
             case CHEST -> "show_my_skin.settings.chestplate_opacity";
             case LEGS -> "show_my_skin.settings.leggings_opacity";
-            case MAINHAND -> null;
-            case OFFHAND -> null;
+            case MAINHAND, OFFHAND, BODY -> null;
             case FEET -> "show_my_skin.settings.boots_opacity";
-            case BODY -> null;
         };
     }
 
