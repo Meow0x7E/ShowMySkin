@@ -50,6 +50,8 @@ public class Config {
     public static ModConfigSpec.BooleanValue bootsRightLegVisible;
     public static ModConfigSpec.BooleanValue bootsLeftLegVisible;
 
+    //被攻击时是否恢复
+    public static ModConfigSpec.BooleanValue resetArmorOnDamage;
     static {
         BUILDER.push("Armor Settings");
         // 可见性设置
@@ -125,6 +127,10 @@ public class Config {
         BUILDER.pop();
 
         BUILDER.pop();
+
+        resetArmorOnDamage = BUILDER
+                .comment("Whether to reset armor on damage")
+                .define("resetArmorOnDamage", true);
     }
 
     public static final ModConfigSpec SPEC = BUILDER.build();

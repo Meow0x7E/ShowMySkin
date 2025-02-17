@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.pz.showMySkin.Config;
 import com.pz.showMySkin.client.renderer.CustomArmorRenderType;
 import com.pz.showMySkin.uilt.ArmorRenderTracker;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.Model;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -32,6 +33,12 @@ public abstract class ArmorLayerMixin<T extends LivingEntity, M extends Humanoid
                                         Model p_289658_, int p_350798_, ResourceLocation p_324344_);
     @Unique
     private float showMySkin$getArmorOpacity(EquipmentSlot slot) {
+        // 获取当前实体
+        LivingEntity entity = ArmorRenderTracker.getCurrentEntity();
+        // 如果不是本地玩家，返回完全不透明
+        if (entity == null || entity != Minecraft.getInstance().player) {
+            return 1.0f;
+        }
         return switch (slot) {
             case HEAD -> Config.helmetOpacity.get() / 100.0f;
             case CHEST -> Config.chestplateOpacity.get() / 100.0f;
@@ -41,28 +48,42 @@ public abstract class ArmorLayerMixin<T extends LivingEntity, M extends Humanoid
         };
     }
 
+    @Unique
+    private boolean showMySkin$isLocalPlayer(LivingEntity entity) {
+        if (entity == null || Minecraft.getInstance().player == null) {
+            return false;
+        }
+        // 使用UUID比较来确保完全匹配
+        return entity.getUUID().equals(Minecraft.getInstance().player.getUUID());
+    }
 
     @Inject(method = "renderArmorPiece(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/entity/EquipmentSlot;ILnet/minecraft/client/model/HumanoidModel;FFFFFF)V",
             at = @At("HEAD"), cancellable = true)
-    private void onRenderArmorPiece(PoseStack poseStack, MultiBufferSource bufferSource, T livingEntity, EquipmentSlot slot, int packedLight, A p_model, float limbSwing, float limbSwingAmount, float partialTick, float ageInTicks, float netHeadYaw, float headPitch, CallbackInfo ci) {
+    private void onRenderArmorPiece(PoseStack poseStack, MultiBufferSource bufferSource,
+                                    T livingEntity, EquipmentSlot slot, int packedLight,
+                                    A p_model, float limbSwing, float limbSwingAmount,
+                                    float partialTick, float ageInTicks, float netHeadYaw, float headPitch, CallbackInfo ci) {
         ItemStack itemstack = livingEntity.getItemBySlot(slot);
 
-        // 储存当前渲染的装备槽位
-        ArmorRenderTracker.setCurrentSlot(slot);
 
-        boolean isVisible = switch (slot) {
-            case HEAD ->  Config.helmetVisible.get();
-            case CHEST ->  Config.chestplateVisible.get();
-            case LEGS ->  Config.leggingsVisible.get();
-            case FEET ->  Config.bootsVisible.get();
-            default -> true;
-        };
+            // 储存当前渲染的装备槽位和实体
+            ArmorRenderTracker.setCurrentSlot(slot);
+            ArmorRenderTracker.setCurrentEntity(livingEntity);
 
-        // 如果设置为不可见，取消渲染
+            // 只对本地玩家应用设置
+            if (livingEntity == Minecraft.getInstance().player) {
+                boolean isVisible = switch (slot) {
+                    case HEAD -> Config.helmetVisible.get();
+                    case CHEST -> Config.chestplateVisible.get();
+                    case LEGS -> Config.leggingsVisible.get();
+                    case FEET -> Config.bootsVisible.get();
+                    default -> true;
+                };
 
-        if (!isVisible || showMySkin$getArmorOpacity(slot) <= 0.0f) {
-            ci.cancel();
-        }
+                if (!isVisible || showMySkin$getArmorOpacity(slot) <= 0.0f) {
+                    ci.cancel();
+                }
+            }
     }
 
     @Inject(
@@ -75,22 +96,28 @@ public abstract class ArmorLayerMixin<T extends LivingEntity, M extends Humanoid
     )
     private void onCheckFoil(PoseStack poseStack, MultiBufferSource bufferSource, T livingEntity, EquipmentSlot slot, int packedLight, A p_model, float limbSwing, float limbSwingAmount, float partialTick, float ageInTicks, float netHeadYaw, float headPitch, CallbackInfo ci) {
         // 检查该部位的附魔效果是否应该显示
-        boolean showEnchantment = switch (slot) {
-            case HEAD -> Config.helmetEnchantGlow.get();
-            case CHEST -> Config.chestplateEnchantGlow.get();
-            case LEGS -> Config.leggingsEnchantGlow.get();
-            case FEET -> Config.bootsEnchantGlow.get();
-            default -> true;
-        };
-
-        if (!showEnchantment) {
-            // 如果不显示附魔效果，跳过renderGlint的调用
-            ci.cancel();
+        if (showMySkin$isLocalPlayer(livingEntity)) {
+            boolean showEnchantment = switch (slot) {
+                case HEAD -> Config.helmetEnchantGlow.get();
+                case CHEST -> Config.chestplateEnchantGlow.get();
+                case LEGS -> Config.leggingsEnchantGlow.get();
+                case FEET -> Config.bootsEnchantGlow.get();
+                default -> true;
+            };
+            if (!showEnchantment) {
+                // 如果不显示附魔效果，跳过renderGlint的调用
+                ci.cancel();
+            }
         }
+
     }
 
     @Inject(method = "setPartVisibility(Lnet/minecraft/client/model/HumanoidModel;Lnet/minecraft/world/entity/EquipmentSlot;)V", at = @At("HEAD"),cancellable = true)
     protected void setPartVisibility(A model, EquipmentSlot slot, CallbackInfo ci) {
+        LivingEntity entity = ArmorRenderTracker.getCurrentEntity();
+        if (entity == null || entity != Minecraft.getInstance().player) {
+            return;
+        }
         model.setAllVisible(false);
         switch (slot) {
             case HEAD:
@@ -124,7 +151,11 @@ public abstract class ArmorLayerMixin<T extends LivingEntity, M extends Humanoid
             cancellable = true)
     private void onRenderModel(PoseStack p_289664_, MultiBufferSource p_289689_, int p_289681_, Model p_289658_, int p_350798_, ResourceLocation p_324344_, CallbackInfo ci) {
         EquipmentSlot currentSlot = ArmorRenderTracker.getCurrentSlot();
-        if (currentSlot == null) return;
+        LivingEntity entity = ArmorRenderTracker.getCurrentEntity();
+
+        if (currentSlot == null || entity == null || entity != Minecraft.getInstance().player) {
+            return;
+        }
         float opacity = showMySkin$getArmorOpacity(currentSlot);
         if (opacity <= 0.0f) {
             ci.cancel();
@@ -143,6 +174,13 @@ public abstract class ArmorLayerMixin<T extends LivingEntity, M extends Humanoid
 
         p_289658_.renderToBuffer(p_289664_, vertexConsumer, p_289681_, OverlayTexture.NO_OVERLAY, color);
         ci.cancel();
+    }
+
+    @Inject(method = "renderArmorPiece(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/entity/EquipmentSlot;ILnet/minecraft/client/model/HumanoidModel;FFFFFF)V",
+            at = @At("TAIL"))
+    private void afterCompleteRenderArmorPiece(PoseStack poseStack, MultiBufferSource bufferSource, T livingEntity, EquipmentSlot slot, int packedLight, A p_model, float limbSwing, float limbSwingAmount, float partialTick, float ageInTicks, float netHeadYaw, float headPitch, CallbackInfo ci) {
+        // 在整个渲染流程结束后清理
+        ArmorRenderTracker.clear();
     }
 
 }

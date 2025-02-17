@@ -1,7 +1,3 @@
 {
-  "show_my_skin.settings.title": "Armor Settings",
-  "show_my_skin.settings.helmet_opacity": "Helmet Opacity",
-  "show_my_skin.settings.chestplate_opacity": "Chestplate Opacity",
-  "show_my_skin.settings.leggings_opacity": "Leggings Opacity",
-  "show_my_skin.settings.boots_opacity": "Boots Opacity"
+  "gui.showmyskin.opacity": "opacity"
 }
