@@ -23,6 +23,7 @@ public class NetworkHandler {
                 (payload, context) -> {
                     if (context.flow().isServerbound()) {
                         context.channelHandlerContext().executor().execute(()->{
+                            ArmorSyncTracker.updatePlayerData(payload);
                             context.player().getServer().getPlayerList().getPlayers().forEach(
                                     player->{
                                         if (!player.getUUID().equals(payload.playerUUID())){

@@ -5,6 +5,7 @@ import com.pz.showMySkin.ShowMySkin;
 import com.pz.showMySkin.network.ArmorRenderPayload;
 import com.pz.showMySkin.network.ArmorSyncTracker;
 import net.minecraft.client.Minecraft;
+import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -15,8 +16,8 @@ public class SeverEvent {
 
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
-        if (event.getEntity() == Minecraft.getInstance().player) {
-            ArmorRenderPayload payload = new ArmorRenderPayload(
+        if (event.getEntity() instanceof ServerPlayer joiningPlayer) {
+            ArmorRenderPayload newPlayerPayload = new ArmorRenderPayload(
                     event.getEntity().getUUID(),
                     new boolean[]{
                             Config.helmetVisible.get(),
@@ -49,8 +50,23 @@ public class SeverEvent {
                             Config.bootsLeftLegVisible.get()
                     }
             );
-            Minecraft.getInstance().getConnection().send(payload.toVanillaServerbound());
+            joiningPlayer.getServer().getPlayerList().getPlayers().forEach(otherPlayer -> {
+                if (!otherPlayer.getUUID().equals(joiningPlayer.getUUID())) {
+                    otherPlayer.connection.send(newPlayerPayload.toVanillaClientbound());
+                }
+            });
+
+            joiningPlayer.getServer().getPlayerList().getPlayers().forEach(existingPlayer -> {
+                if (!existingPlayer.getUUID().equals(joiningPlayer.getUUID())) {
+                    // 获取已在线玩家的盔甲设置
+                    ArmorRenderPayload existingPlayerPayload = ArmorSyncTracker.getPlayerData(existingPlayer.getUUID());
+                    if (existingPlayerPayload != null) {
+                        joiningPlayer.connection.send(existingPlayerPayload.toVanillaClientbound());
+                    }
+                }
+            });
         }
+
     }
 
     @SubscribeEvent
