@@ -4,6 +4,8 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.pz.showMySkin.Config;
 import com.pz.showMySkin.client.renderer.CustomArmorRenderType;
+import com.pz.showMySkin.network.ArmorRenderPayload;
+import com.pz.showMySkin.network.ArmorSyncTracker;
 import com.pz.showMySkin.uilt.ArmorRenderTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.HumanoidModel;
@@ -31,22 +33,92 @@ public abstract class ArmorLayerMixin<T extends LivingEntity, M extends Humanoid
     @Shadow
     protected abstract void renderModel(PoseStack p_289664_, MultiBufferSource p_289689_, int p_289681_,
                                         Model p_289658_, int p_350798_, ResourceLocation p_324344_);
+
     @Unique
-    private float showMySkin$getArmorOpacity(EquipmentSlot slot) {
-        // 获取当前实体
-        LivingEntity entity = ArmorRenderTracker.getCurrentEntity();
-        // 如果不是本地玩家，返回完全不透明
-        if (entity == null || entity != Minecraft.getInstance().player) {
-            return 1.0f;
+    private boolean showMySkin$isArmorVisible(EquipmentSlot slot, LivingEntity entity) {
+        if (entity == Minecraft.getInstance().player) {
+            // 本地玩家使用本地配置
+            return switch (slot) {
+                case HEAD -> Config.helmetVisible.get();
+                case CHEST -> Config.chestplateVisible.get();
+                case LEGS -> Config.leggingsVisible.get();
+                case FEET -> Config.bootsVisible.get();
+                default -> true;
+            };
         }
-        return switch (slot) {
-            case HEAD -> Config.helmetOpacity.get() / 100.0f;
-            case CHEST -> Config.chestplateOpacity.get() / 100.0f;
-            case LEGS -> Config.leggingsOpacity.get() / 100.0f;
-            case FEET -> Config.bootsOpacity.get() / 100.0f;
-            default -> 1.0f;
+
+        // 其他玩家使用同步数据
+        ArmorRenderPayload data = ArmorSyncTracker.getPlayerData(entity.getUUID());
+        if (data == null) return true;
+
+        int index = switch (slot) {
+            case HEAD -> 0;
+            case CHEST -> 1;
+            case LEGS -> 2;
+            case FEET -> 3;
+            default -> -1;
         };
+
+        return index >= 0 ? data.armorVisibility()[index] : true;
     }
+
+    @Unique
+    private boolean showMySkin$hasEnchantGlow(EquipmentSlot slot, LivingEntity entity) {
+        if (entity == Minecraft.getInstance().player) {
+            // 本地玩家使用本地配置
+            return switch (slot) {
+                case HEAD -> Config.helmetEnchantGlow.get();
+                case CHEST -> Config.chestplateEnchantGlow.get();
+                case LEGS -> Config.leggingsEnchantGlow.get();
+                case FEET -> Config.bootsEnchantGlow.get();
+                default -> true;
+            };
+        }
+
+        // 其他玩家使用同步数据
+        ArmorRenderPayload data = ArmorSyncTracker.getPlayerData(entity.getUUID());
+        if (data == null) return true;
+
+        int index = switch (slot) {
+            case HEAD -> 0;
+            case CHEST -> 1;
+            case LEGS -> 2;
+            case FEET -> 3;
+            default -> -1;
+        };
+
+        return index >= 0 ? data.enchantGlow()[index] : true;
+    }
+
+    @Unique
+    private float showMySkin$getArmorOpacity(EquipmentSlot slot, LivingEntity entity) {
+        if (entity == Minecraft.getInstance().player) {
+            // 本地玩家使用本地配置
+            return switch (slot) {
+                case HEAD -> Config.helmetOpacity.get() / 100.0f;
+                case CHEST -> Config.chestplateOpacity.get() / 100.0f;
+                case LEGS -> Config.leggingsOpacity.get() / 100.0f;
+                case FEET -> Config.bootsOpacity.get() / 100.0f;
+                default -> 1.0f;
+            };
+        }
+
+        // 其他玩家使用同步数据
+        ArmorRenderPayload data = ArmorSyncTracker.getPlayerData(entity.getUUID());
+        if (data == null) return 1.0f;
+
+        int index = switch (slot) {
+            case HEAD -> 0;
+            case CHEST -> 1;
+            case LEGS -> 2;
+            case FEET -> 3;
+            default -> -1;
+        };
+
+        return index >= 0 ? data.armorOpacity()[index] / 100.0f : 1.0f;
+    }
+
+
 
     @Unique
     private boolean showMySkin$isLocalPlayer(LivingEntity entity) {
@@ -56,6 +128,8 @@ public abstract class ArmorLayerMixin<T extends LivingEntity, M extends Humanoid
         // 使用UUID比较来确保完全匹配
         return entity.getUUID().equals(Minecraft.getInstance().player.getUUID());
     }
+
+
 
     @Inject(method = "renderArmorPiece(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/entity/EquipmentSlot;ILnet/minecraft/client/model/HumanoidModel;FFFFFF)V",
             at = @At("HEAD"), cancellable = true)
@@ -70,20 +144,11 @@ public abstract class ArmorLayerMixin<T extends LivingEntity, M extends Humanoid
             ArmorRenderTracker.setCurrentSlot(slot);
             ArmorRenderTracker.setCurrentEntity(livingEntity);
 
-            // 只对本地玩家应用设置
-            if (livingEntity == Minecraft.getInstance().player) {
-                boolean isVisible = switch (slot) {
-                    case HEAD -> Config.helmetVisible.get();
-                    case CHEST -> Config.chestplateVisible.get();
-                    case LEGS -> Config.leggingsVisible.get();
-                    case FEET -> Config.bootsVisible.get();
-                    default -> true;
-                };
 
-                if (!isVisible || showMySkin$getArmorOpacity(slot) <= 0.0f) {
-                    ci.cancel();
-                }
-            }
+        if (!showMySkin$isArmorVisible(slot, livingEntity) ||
+                showMySkin$getArmorOpacity(slot, livingEntity) <= 0.0f) {
+            ci.cancel();
+        }
     }
 
     @Inject(
@@ -95,52 +160,71 @@ public abstract class ArmorLayerMixin<T extends LivingEntity, M extends Humanoid
             cancellable = true
     )
     private void onCheckFoil(PoseStack poseStack, MultiBufferSource bufferSource, T livingEntity, EquipmentSlot slot, int packedLight, A p_model, float limbSwing, float limbSwingAmount, float partialTick, float ageInTicks, float netHeadYaw, float headPitch, CallbackInfo ci) {
-        // 检查该部位的附魔效果是否应该显示
-        if (showMySkin$isLocalPlayer(livingEntity)) {
-            boolean showEnchantment = switch (slot) {
-                case HEAD -> Config.helmetEnchantGlow.get();
-                case CHEST -> Config.chestplateEnchantGlow.get();
-                case LEGS -> Config.leggingsEnchantGlow.get();
-                case FEET -> Config.bootsEnchantGlow.get();
-                default -> true;
-            };
-            if (!showEnchantment) {
-                // 如果不显示附魔效果，跳过renderGlint的调用
-                ci.cancel();
-            }
+        if (!showMySkin$hasEnchantGlow(slot, livingEntity)) {
+            ci.cancel();
         }
 
     }
 
-    @Inject(method = "setPartVisibility(Lnet/minecraft/client/model/HumanoidModel;Lnet/minecraft/world/entity/EquipmentSlot;)V", at = @At("HEAD"),cancellable = true)
+    @Inject(method = "setPartVisibility(Lnet/minecraft/client/model/HumanoidModel;Lnet/minecraft/world/entity/EquipmentSlot;)V",
+            at = @At("HEAD"),cancellable = true)
     protected void setPartVisibility(A model, EquipmentSlot slot, CallbackInfo ci) {
         LivingEntity entity = ArmorRenderTracker.getCurrentEntity();
-        if (entity == null || entity != Minecraft.getInstance().player) {
+        if (entity == null ) {
             return;
         }
         model.setAllVisible(false);
-        switch (slot) {
-            case HEAD:
-                model.head.visible = Config.helmetHeadVisible.get();
-                model.hat.visible = Config.helmetHatVisible.get();
-                break;
-
-            case CHEST:
-                model.body.visible = Config.chestplateBodyVisible.get();
-                model.rightArm.visible = Config.chestplateRightArmVisible.get();
-                model.leftArm.visible = Config.chestplateLeftArmVisible.get();
-                break;
-
-            case LEGS:
-                model.body.visible = Config.leggingsBodyVisible.get();
-                model.rightLeg.visible = Config.leggingsRightLegVisible.get();
-                model.leftLeg.visible = Config.leggingsLeftLegVisible.get();
-                break;
-
-            case FEET:
-                model.rightLeg.visible = Config.bootsRightLegVisible.get();
-                model.leftLeg.visible = Config.bootsLeftLegVisible.get();
-                break;
+        // 如果是本地玩家，使用本地配置
+        if (entity == Minecraft.getInstance().player) {
+            switch (slot) {
+                case HEAD:
+                    model.head.visible = Config.helmetHeadVisible.get();
+                    model.hat.visible = Config.helmetHatVisible.get();
+                    break;
+                case CHEST:
+                    model.body.visible = Config.chestplateBodyVisible.get();
+                    model.rightArm.visible = Config.chestplateRightArmVisible.get();
+                    model.leftArm.visible = Config.chestplateLeftArmVisible.get();
+                    break;
+                case LEGS:
+                    model.body.visible = Config.leggingsBodyVisible.get();
+                    model.rightLeg.visible = Config.leggingsRightLegVisible.get();
+                    model.leftLeg.visible = Config.leggingsLeftLegVisible.get();
+                    break;
+                case FEET:
+                    model.rightLeg.visible = Config.bootsRightLegVisible.get();
+                    model.leftLeg.visible = Config.bootsLeftLegVisible.get();
+                    break;
+            }
+        } else {
+            // 如果是其他玩家，从网络同步数据中获取
+            ArmorRenderPayload data = ArmorSyncTracker.getPlayerData(entity.getUUID());
+            if (data != null) {
+                boolean[] parts = data.armorPartVisibility();
+                switch (slot) {
+                    case HEAD:
+                        model.head.visible = parts[0];
+                        model.hat.visible = parts[1];
+                        break;
+                    case CHEST:
+                        model.body.visible = parts[2];
+                        model.rightArm.visible = parts[3];
+                        model.leftArm.visible = parts[4];
+                        break;
+                    case LEGS:
+                        model.body.visible = parts[5];
+                        model.rightLeg.visible = parts[6];
+                        model.leftLeg.visible = parts[7];
+                        break;
+                    case FEET:
+                        model.rightLeg.visible = parts[8];
+                        model.leftLeg.visible = parts[9];
+                        break;
+                }
+            } else {
+                // 如果没有同步数据，全部显示
+                model.setAllVisible(true);
+            }
         }
         ci.cancel();
     }
@@ -153,10 +237,10 @@ public abstract class ArmorLayerMixin<T extends LivingEntity, M extends Humanoid
         EquipmentSlot currentSlot = ArmorRenderTracker.getCurrentSlot();
         LivingEntity entity = ArmorRenderTracker.getCurrentEntity();
 
-        if (currentSlot == null || entity == null || entity != Minecraft.getInstance().player) {
+        if (currentSlot == null || entity == null) {
             return;
         }
-        float opacity = showMySkin$getArmorOpacity(currentSlot);
+        float opacity = showMySkin$getArmorOpacity(currentSlot,entity);
         if (opacity <= 0.0f) {
             ci.cancel();
             return;

@@ -5,6 +5,7 @@ import com.pz.showMySkin.ShowMySkin;
 import com.pz.showMySkin.client.gui.parts.ItemButton;
 import com.pz.showMySkin.client.gui.parts.OpacitySlider;
 import com.pz.showMySkin.client.gui.parts.TextButton;
+import com.pz.showMySkin.network.ArmorRenderPayload;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -82,6 +83,44 @@ public class ArmorSettingsScreen extends Screen {
         }
         this.saveButton =Button.builder(Component.literal("save"), button -> {
             Config.SPEC.save();
+            // 如果在游戏中且有网络连接
+            if (minecraft != null && minecraft.getConnection() != null) {
+                ArmorRenderPayload payload = new ArmorRenderPayload(
+                        minecraft.player.getUUID(),
+                        new boolean[]{
+                                Config.helmetVisible.get(),
+                                Config.chestplateVisible.get(),
+                                Config.leggingsVisible.get(),
+                                Config.bootsVisible.get()
+                        },
+                        new int[]{
+                                Config.helmetOpacity.get(),
+                                Config.chestplateOpacity.get(),
+                                Config.leggingsOpacity.get(),
+                                Config.bootsOpacity.get()
+                        },
+                        new boolean[]{
+                                Config.helmetEnchantGlow.get(),
+                                Config.chestplateEnchantGlow.get(),
+                                Config.leggingsEnchantGlow.get(),
+                                Config.bootsEnchantGlow.get()
+                        },
+                        new boolean[]{
+                                Config.helmetHeadVisible.get(),
+                                Config.helmetHatVisible.get(),
+                                Config.chestplateBodyVisible.get(),
+                                Config.chestplateRightArmVisible.get(),
+                                Config.chestplateLeftArmVisible.get(),
+                                Config.leggingsBodyVisible.get(),
+                                Config.leggingsRightLegVisible.get(),
+                                Config.leggingsLeftLegVisible.get(),
+                                Config.bootsRightLegVisible.get(),
+                                Config.bootsLeftLegVisible.get()
+                        }
+                );
+
+                minecraft.getConnection().send(payload.toVanillaServerbound());
+            }
             onClose();
         })
                 .pos(guiLeft + GUI_WIDTH / 2 +48, guiTop + GUI_HEIGHT - 10)
