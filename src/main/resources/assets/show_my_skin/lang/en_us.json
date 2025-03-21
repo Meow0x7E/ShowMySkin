@@ -1,3 +1,5 @@
 {
-  "gui.showmyskin.opacity": "opacity"
+    "key.categories.show_my_skin": "Show my skin",
+    "key.show_my_skin.open_settings": "Open settings",
+    "gui.showmyskin.opacity": "opacity"
 }
